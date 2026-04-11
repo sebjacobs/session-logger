@@ -164,3 +164,158 @@ class TestWrite:
         )
         entry = json.loads((tmp_path / "logs" / "proj" / "main.jsonl").read_text().strip())
         assert entry["content"] == "Line one\nLine two\nLine three"
+
+
+# ---------------------------------------------------------------------------
+# tail command
+# ---------------------------------------------------------------------------
+
+
+class TestTail:
+    def test_returns_last_entry(self, tmp_path):
+        for entry_type in ("start", "checkpoint", "finish"):
+            run_cli(
+                "write",
+                "--project", "proj",
+                "--branch", "main",
+                "--type", entry_type,
+                "--content", f"Content for {entry_type}",
+                env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+            )
+        result = run_cli(
+            "tail", "--project", "proj", "--branch", "main",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        assert result.returncode == 0
+        assert "| finish" in result.stdout
+        assert "Content for finish" in result.stdout
+        assert "Content for start" not in result.stdout
+
+    def test_missing_file_exits_with_error(self, tmp_path):
+        result = run_cli(
+            "tail", "--project", "nope", "--branch", "nope",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        assert result.returncode == 1
+        assert "No log file" in result.stderr
+
+    def test_renders_next_field(self, tmp_path):
+        run_cli(
+            "write",
+            "--project", "proj",
+            "--branch", "main",
+            "--type", "finish",
+            "--content", "Wrapped up",
+            "--next", "Continue tomorrow",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        result = run_cli(
+            "tail", "--project", "proj", "--branch", "main",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        assert "**Next:** Continue tomorrow" in result.stdout
+
+    def test_limit_returns_multiple_entries(self, tmp_path):
+        for i in range(5):
+            run_cli(
+                "write",
+                "--project", "proj",
+                "--branch", "main",
+                "--type", "checkpoint",
+                "--content", f"Entry {i}",
+                env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+            )
+        result = run_cli(
+            "tail", "--project", "proj", "--branch", "main",
+            "--limit", "3",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        assert result.returncode == 0
+        assert "Entry 2" in result.stdout
+        assert "Entry 3" in result.stdout
+        assert "Entry 4" in result.stdout
+        assert "Entry 1" not in result.stdout
+        assert "Entry 0" not in result.stdout
+
+    def test_limit_exceeding_entry_count_returns_all(self, tmp_path):
+        run_cli(
+            "write",
+            "--project", "proj",
+            "--branch", "main",
+            "--type", "start",
+            "--content", "Only entry",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        result = run_cli(
+            "tail", "--project", "proj", "--branch", "main",
+            "--limit", "10",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        assert result.returncode == 0
+        assert "Only entry" in result.stdout
+
+    def test_renders_timestamp_in_heading(self, tmp_path):
+        run_cli(
+            "write",
+            "--project", "proj",
+            "--branch", "main",
+            "--type", "start",
+            "--content", "Hello",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        result = run_cli(
+            "tail", "--project", "proj", "--branch", "main",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        assert re.search(r"^## \d{4}-\d{2}-\d{2} \d{2}:\d{2} \| start$", result.stdout, re.MULTILINE)
+
+
+# ---------------------------------------------------------------------------
+# Integration: write then tail
+# ---------------------------------------------------------------------------
+
+
+class TestWriteThenTail:
+    def test_round_trip_single_entry(self, tmp_path):
+        """Write an entry, read it back with last — content should match."""
+        run_cli(
+            "write",
+            "--project", "my-proj",
+            "--branch", "feature-auth",
+            "--type", "start",
+            "--content", "Implementing auth flow",
+            "--next", "Add token refresh",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        result = run_cli(
+            "tail", "--project", "my-proj", "--branch", "feature-auth",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        assert result.returncode == 0
+        assert "Implementing auth flow" in result.stdout
+        assert "**Next:** Add token refresh" in result.stdout
+        assert "| start" in result.stdout
+
+    def test_round_trip_multiple_entries_returns_latest(self, tmp_path):
+        """Write several entries, last returns only the most recent."""
+        entries = [
+            ("start", "Beginning work"),
+            ("checkpoint", "Halfway through"),
+            ("finish", "All done"),
+        ]
+        for entry_type, content in entries:
+            run_cli(
+                "write",
+                "--project", "proj",
+                "--branch", "main",
+                "--type", entry_type,
+                "--content", content,
+                env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+            )
+        result = run_cli(
+            "tail", "--project", "proj", "--branch", "main",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        assert "All done" in result.stdout
+        assert "Beginning work" not in result.stdout
+        assert "Halfway through" not in result.stdout

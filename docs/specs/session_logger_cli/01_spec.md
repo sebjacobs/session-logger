@@ -36,18 +36,18 @@ session_logger.py write --project STR --branch STR --type TYPE --content STR [--
 - `--next` is optional; omitted from JSON when not provided
 - Prints confirmation to stdout: `Wrote <type> entry to logs/<project>/<branch>.jsonl`
 
-### `last`
+### `tail`
 
 Returns the final entry from a branch's log file.
 
 ```
-session_logger.py last --project STR --branch STR
+session_logger.py tail --project STR --branch STR [--limit N]
 ```
 
 **Behaviour:**
 
-- Reads the last line of `<branch>.jsonl`
-- Renders it as formatted text to stdout
+- Reads the last N entries from `<branch>.jsonl` (default: 1)
+- Renders them as formatted text to stdout, separated by blank lines
 - Exits with code 1 and a message to stderr if the file doesn't exist or is empty
 
 ### `query`
