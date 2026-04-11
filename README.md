@@ -29,7 +29,7 @@ export SESSION_LOGS_DATA=~/path/to/your/private/session-logs-data
 ## Data layout
 
 ```
-session-logs-data/
+session-logger-data/
   logs/
     <project>/
       <branch>.md      ← one file per branch, append-only within a session
