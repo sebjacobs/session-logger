@@ -97,6 +97,67 @@ def cmd_tail(args: argparse.Namespace) -> None:
     print("\n\n".join(format_entry(e) for e in tail))
 
 
+def cmd_ls(args: argparse.Namespace) -> None:
+    """List projects or branches."""
+    data_dir = get_data_dir()
+    logs_dir = data_dir / "logs"
+
+    if not logs_dir.exists():
+        print("No logs directory found", file=sys.stderr)
+        sys.exit(1)
+
+    if args.project:
+        # List branches for a project
+        project_dir = logs_dir / args.project
+        if not project_dir.exists():
+            print(f"No logs for project {args.project}", file=sys.stderr)
+            sys.exit(1)
+        # Collect branch info and sort by last timestamp descending
+        branch_info = []
+        for path in project_dir.glob("*.jsonl"):
+            branch = path.stem
+            entries = read_entries(path)
+            if entries:
+                last_ts = entries[-1]["timestamp"]
+                last_date = datetime.fromisoformat(last_ts).strftime("%Y-%m-%d")
+                branch_info.append((branch, len(entries), last_date, last_ts))
+            else:
+                branch_info.append((branch, 0, None, ""))
+        branch_info.sort(key=lambda x: x[3], reverse=True)
+        for branch, count, last_date, _ in branch_info:
+            if last_date:
+                print(f"{branch}  ({count} entries, last: {last_date})")
+            else:
+                print(branch)
+    else:
+        # List projects with last activity, sorted by most recent first
+        project_info = []
+        for project_dir in logs_dir.iterdir():
+            if not project_dir.is_dir():
+                continue
+            latest_ts = ""
+            for path in project_dir.glob("*.jsonl"):
+                entries = read_entries(path)
+                if entries:
+                    ts = entries[-1]["timestamp"]
+                    if ts > latest_ts:
+                        latest_ts = ts
+            if latest_ts:
+                last_date = datetime.fromisoformat(latest_ts).strftime("%Y-%m-%d")
+                project_info.append((project_dir.name, last_date, latest_ts))
+            else:
+                project_info.append((project_dir.name, None, ""))
+        if not project_info:
+            print("No projects found", file=sys.stderr)
+            sys.exit(1)
+        project_info.sort(key=lambda x: x[2], reverse=True)
+        for name, last_date, _ in project_info:
+            if last_date:
+                print(f"{name}  (last: {last_date})")
+            else:
+                print(name)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Append-only session log tool for Claude Code sessions",
@@ -117,6 +178,10 @@ def main() -> None:
     p_tail.add_argument("--branch", required=True)
     p_tail.add_argument("--limit", type=int, default=1, help="Number of entries to return (default: 1)")
 
+    # ls
+    p_ls = subparsers.add_parser("ls", help="List projects or branches")
+    p_ls.add_argument("--project", default=None, help="List branches for this project")
+
     args = parser.parse_args()
 
     match args.command:
@@ -124,6 +189,8 @@ def main() -> None:
             cmd_write(args)
         case "tail":
             cmd_tail(args)
+        case "ls":
+            cmd_ls(args)
 
 
 if __name__ == "__main__":

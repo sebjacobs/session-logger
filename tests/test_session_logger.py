@@ -319,3 +319,80 @@ class TestWriteThenTail:
         assert "All done" in result.stdout
         assert "Beginning work" not in result.stdout
         assert "Halfway through" not in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# ls command
+# ---------------------------------------------------------------------------
+
+
+class TestLs:
+    def test_lists_projects(self, tmp_path):
+        for project in ("alpha", "beta", "gamma"):
+            run_cli(
+                "write",
+                "--project", project,
+                "--branch", "main",
+                "--type", "start",
+                "--content", "hello",
+                env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+            )
+        result = run_cli(
+            "ls",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        assert result.returncode == 0
+        lines = result.stdout.strip().splitlines()
+        assert lines == ["alpha", "beta", "gamma"]
+
+    def test_lists_branches_for_project(self, tmp_path):
+        for branch in ("main", "feature-auth", "feature-ui"):
+            run_cli(
+                "write",
+                "--project", "my-app",
+                "--branch", branch,
+                "--type", "start",
+                "--content", "hello",
+                env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+            )
+        result = run_cli(
+            "ls", "--project", "my-app",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        assert result.returncode == 0
+        assert "feature-auth" in result.stdout
+        assert "feature-ui" in result.stdout
+        assert "main" in result.stdout
+
+    def test_branch_listing_shows_entry_count_and_date(self, tmp_path):
+        for i in range(3):
+            run_cli(
+                "write",
+                "--project", "proj",
+                "--branch", "main",
+                "--type", "checkpoint",
+                "--content", f"Entry {i}",
+                env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+            )
+        result = run_cli(
+            "ls", "--project", "proj",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        assert "3 entries" in result.stdout
+        assert "last:" in result.stdout
+
+    def test_no_projects_exits_with_error(self, tmp_path):
+        (tmp_path / "logs").mkdir(parents=True)
+        result = run_cli(
+            "ls",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        assert result.returncode == 1
+
+    def test_unknown_project_exits_with_error(self, tmp_path):
+        (tmp_path / "logs").mkdir(parents=True)
+        result = run_cli(
+            "ls", "--project", "nonexistent",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        assert result.returncode == 1
