@@ -50,17 +50,33 @@ session_logger.py tail --project STR --branch STR [--limit N]
 - Renders them as formatted text to stdout, separated by blank lines
 - Exits with code 1 and a message to stderr if the file doesn't exist or is empty
 
-### `query`
+### `ls`
 
-Searches entries across projects and branches with optional filters.
+Lists projects, or branches within a project.
 
 ```
-session_logger.py query [--project STR] [--branch STR] [--since DATE] [--type TYPE]
+session_logger.py ls [--project STR]
 ```
 
 **Behaviour:**
 
-- With no filters, returns all entries from all JSONL files
+- With no arguments, lists all project names (one per line, sorted)
+- `--project` lists branches for that project, with entry count and last activity date
+- Exits with code 1 if no projects or the specified project doesn't exist
+
+### `search`
+
+Searches entries by content across projects and branches.
+
+```
+session_logger.py search [TERM] [--project STR] [--branch STR] [--since DATE] [--type TYPE]
+```
+
+**Behaviour:**
+
+- `TERM` is an optional positional argument — case-insensitive substring match against content and next fields
+- Without a term, returns all entries matching the metadata filters
+- Global by default — searches all JSONL files
 - `--project` limits to files under `logs/<project>/`
 - `--branch` combined with `--project` limits to a single file
 - `--since YYYY-MM-DD` filters entries by date (inclusive)

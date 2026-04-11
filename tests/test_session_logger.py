@@ -396,3 +396,127 @@ class TestLs:
             env_override={"SESSION_LOGS_DATA": str(tmp_path)},
         )
         assert result.returncode == 1
+
+
+# ---------------------------------------------------------------------------
+# search command
+# ---------------------------------------------------------------------------
+
+
+class TestSearch:
+    @pytest.fixture()
+    def populated_data(self, tmp_path):
+        """Create a data dir with entries across multiple projects/branches."""
+        run_cli(
+            "write", "--project", "proj-a", "--branch", "main",
+            "--type", "start", "--content", "Implementing auth flow",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        run_cli(
+            "write", "--project", "proj-a", "--branch", "main",
+            "--type", "checkpoint", "--content", "Added token refresh logic",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        run_cli(
+            "write", "--project", "proj-a", "--branch", "feature",
+            "--type", "start", "--content", "Setting up database migrations",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        run_cli(
+            "write", "--project", "proj-b", "--branch", "main",
+            "--type", "finish", "--content", "Deployed auth service",
+            "--next", "Monitor error rates",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        return tmp_path
+
+    def test_search_by_term(self, populated_data):
+        result = run_cli(
+            "search", "auth",
+            env_override={"SESSION_LOGS_DATA": str(populated_data)},
+        )
+        assert result.returncode == 0
+        assert "auth flow" in result.stdout
+        assert "auth service" in result.stdout
+        assert "database migrations" not in result.stdout
+
+    def test_search_is_case_insensitive(self, populated_data):
+        result = run_cli(
+            "search", "AUTH",
+            env_override={"SESSION_LOGS_DATA": str(populated_data)},
+        )
+        assert result.returncode == 0
+        assert "auth flow" in result.stdout
+
+    def test_search_includes_next_field(self, populated_data):
+        result = run_cli(
+            "search", "error rates",
+            env_override={"SESSION_LOGS_DATA": str(populated_data)},
+        )
+        assert result.returncode == 0
+        assert "Deployed auth service" in result.stdout
+
+    def test_search_scoped_by_project(self, populated_data):
+        result = run_cli(
+            "search", "auth", "--project", "proj-a",
+            env_override={"SESSION_LOGS_DATA": str(populated_data)},
+        )
+        assert result.returncode == 0
+        assert "auth flow" in result.stdout
+        assert "auth service" not in result.stdout  # proj-b entry excluded
+
+    def test_search_scoped_by_project_and_branch(self, populated_data):
+        result = run_cli(
+            "search", "auth", "--project", "proj-a", "--branch", "main",
+            env_override={"SESSION_LOGS_DATA": str(populated_data)},
+        )
+        assert result.returncode == 0
+        assert "auth flow" in result.stdout
+        assert "database migrations" not in result.stdout
+
+    def test_search_scoped_by_type(self, populated_data):
+        result = run_cli(
+            "search", "auth", "--type", "finish",
+            env_override={"SESSION_LOGS_DATA": str(populated_data)},
+        )
+        assert result.returncode == 0
+        assert "Deployed auth service" in result.stdout
+        assert "auth flow" not in result.stdout
+
+    def test_search_scoped_by_since(self, tmp_path):
+        (tmp_path / "logs" / "proj").mkdir(parents=True)
+        jsonl_file = tmp_path / "logs" / "proj" / "main.jsonl"
+        old = json.dumps({"timestamp": "2026-01-01T10:00:00", "type": "start", "content": "Old auth work"})
+        recent = json.dumps({"timestamp": "2026-04-10T10:00:00", "type": "checkpoint", "content": "Recent auth work"})
+        jsonl_file.write_text(f"{old}\n{recent}\n")
+
+        result = run_cli(
+            "search", "auth", "--since", "2026-04-01",
+            env_override={"SESSION_LOGS_DATA": str(tmp_path)},
+        )
+        assert result.returncode == 0
+        assert "Recent auth work" in result.stdout
+        assert "Old auth work" not in result.stdout
+
+    def test_search_without_term_returns_all(self, populated_data):
+        """search with no term but metadata filters still works."""
+        result = run_cli(
+            "search", "--type", "finish",
+            env_override={"SESSION_LOGS_DATA": str(populated_data)},
+        )
+        assert result.returncode == 0
+        assert "Deployed auth service" in result.stdout
+
+    def test_search_provenance_prefix(self, populated_data):
+        result = run_cli(
+            "search", "database",
+            env_override={"SESSION_LOGS_DATA": str(populated_data)},
+        )
+        assert "[proj-a/feature.jsonl]" in result.stdout
+
+    def test_search_no_results(self, populated_data):
+        result = run_cli(
+            "search", "nonexistent term",
+            env_override={"SESSION_LOGS_DATA": str(populated_data)},
+        )
+        assert result.returncode == 1

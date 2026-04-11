@@ -158,6 +158,68 @@ def cmd_ls(args: argparse.Namespace) -> None:
                 print(name)
 
 
+def collect_paths(data_dir: Path, project: str | None, branch: str | None) -> list[Path]:
+    """Collect JSONL file paths based on project/branch scope."""
+    logs_dir = data_dir / "logs"
+
+    if not logs_dir.exists():
+        return []
+
+    if project and branch:
+        return [jsonl_path(data_dir, project, branch)]
+    elif project:
+        project_dir = logs_dir / project
+        return sorted(project_dir.glob("*.jsonl")) if project_dir.exists() else []
+    else:
+        return sorted(logs_dir.glob("**/*.jsonl"))
+
+
+def cmd_search(args: argparse.Namespace) -> None:
+    """Search entries by content across projects and branches."""
+    data_dir = get_data_dir()
+    logs_dir = data_dir / "logs"
+
+    paths = collect_paths(data_dir, args.project, args.branch)
+    if not paths:
+        print("No matching log files found", file=sys.stderr)
+        sys.exit(1)
+
+    since = None
+    if args.since:
+        since = datetime.strptime(args.since, "%Y-%m-%d")
+
+    term = args.term.lower() if args.term else None
+
+    results = []
+    for path in paths:
+        entries = read_entries(path)
+        rel = path.relative_to(logs_dir)
+
+        for entry in entries:
+            if since:
+                entry_date = datetime.fromisoformat(entry["timestamp"])
+                if entry_date < since:
+                    continue
+
+            if args.type and entry["type"] != args.type:
+                continue
+
+            if term:
+                searchable = entry["content"].lower()
+                if entry.get("next"):
+                    searchable += " " + entry["next"].lower()
+                if term not in searchable:
+                    continue
+
+            results.append(f"[{rel}]\n{format_entry(entry)}")
+
+    if not results:
+        print("No matching entries found", file=sys.stderr)
+        sys.exit(1)
+
+    print("\n\n".join(results))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Append-only session log tool for Claude Code sessions",
@@ -182,6 +244,14 @@ def main() -> None:
     p_ls = subparsers.add_parser("ls", help="List projects or branches")
     p_ls.add_argument("--project", default=None, help="List branches for this project")
 
+    # search
+    p_search = subparsers.add_parser("search", help="Search entries by content")
+    p_search.add_argument("term", nargs="?", default=None, help="Search term (case-insensitive)")
+    p_search.add_argument("--project", default=None)
+    p_search.add_argument("--branch", default=None)
+    p_search.add_argument("--since", default=None, help="Filter entries from this date (YYYY-MM-DD)")
+    p_search.add_argument("--type", default=None, choices=ENTRY_TYPES)
+
     args = parser.parse_args()
 
     match args.command:
@@ -191,6 +261,8 @@ def main() -> None:
             cmd_tail(args)
         case "ls":
             cmd_ls(args)
+        case "search":
+            cmd_search(args)
 
 
 if __name__ == "__main__":
