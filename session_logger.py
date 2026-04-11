@@ -11,6 +11,7 @@ Entries are stored as JSONL — one JSON object per line.
 import argparse
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -36,9 +37,14 @@ def get_data_dir() -> Path:
     sys.exit(1)
 
 
+def sanitise_branch(branch: str) -> str:
+    """Sanitise branch name for use as a filename — replace / with +."""
+    return branch.replace("/", "+")
+
+
 def jsonl_path(data_dir: Path, project: str, branch: str) -> Path:
     """Return the path to a branch's JSONL log file."""
-    return data_dir / "logs" / project / f"{branch}.jsonl"
+    return data_dir / "logs" / project / f"{sanitise_branch(branch)}.jsonl"
 
 
 def read_entries(path: Path) -> list[dict]:
@@ -63,8 +69,34 @@ def format_entry(entry: dict) -> str:
     return "\n".join(lines)
 
 
+def git_commit(data_dir: Path, path: Path, message: str) -> None:
+    """Stage and commit a file in the data repo."""
+    subprocess.run(
+        ["git", "add", str(path)],
+        cwd=data_dir,
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", message],
+        cwd=data_dir,
+        capture_output=True,
+        check=True,
+    )
+
+
+def git_push(data_dir: Path) -> None:
+    """Push the data repo to its remote."""
+    subprocess.run(
+        ["git", "push"],
+        cwd=data_dir,
+        capture_output=True,
+        check=True,
+    )
+
+
 def cmd_write(args: argparse.Namespace) -> None:
-    """Append an entry to the branch JSONL file."""
+    """Append an entry to the branch JSONL file, commit, and optionally push."""
     data_dir = get_data_dir()
     path = jsonl_path(data_dir, args.project, args.branch)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -80,7 +112,14 @@ def cmd_write(args: argparse.Namespace) -> None:
     with open(path, "a") as f:
         f.write(json.dumps(entry) + "\n")
 
-    print(f"Wrote {args.type} entry to {path.relative_to(data_dir)}")
+    rel = path.relative_to(data_dir)
+    timestamp = entry["timestamp"]
+    git_commit(data_dir, path, f"session: {args.project}/{args.branch} {args.type} {timestamp}")
+
+    if args.type == "finish":
+        git_push(data_dir)
+
+    print(f"Wrote {args.type} entry to {rel}")
 
 
 def cmd_tail(args: argparse.Namespace) -> None:

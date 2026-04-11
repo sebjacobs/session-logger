@@ -34,6 +34,8 @@ session_logger.py write --project STR --branch STR --type TYPE --content STR [--
 - Appends a single JSON line to `<branch>.jsonl`
 - `--type` must be one of: `start`, `checkpoint`, `break`, `finish`
 - `--next` is optional; omitted from JSON when not provided
+- Commits the change in the data repo: `session: <project>/<branch> <type> <timestamp>`
+- If `--type finish`, also pushes to remote
 - Prints confirmation to stdout: `Wrote <type> entry to logs/<project>/<branch>.jsonl`
 
 ### `tail`
@@ -101,4 +103,5 @@ Resolved in order:
 ## Future enhancements
 
 - **Markdown view generation:** regenerate a human-readable `.md` file from the JSONL source on each write
-- **Integration test fixture:** a dummy project + git data repo in `tests/fixtures/` for full round-trip testing (write → git commit → query) against a real git repo, rather than only testing file I/O in isolation
+- **Claude Code plugin/extension:** package as an MCP server or Claude Code extension for one-step install — creates data repo, sets env var, installs skills
+- **Integration test fixture:** a dummy project + git data repo in `tests/fixtures/` for full round-trip testing against a real git repo
