@@ -32,10 +32,10 @@ export SESSION_LOGS_DATA=~/path/to/your/private/session-logs-data
 session-logger-data/
   logs/
     <project>/
-      <branch>.md      ← one file per branch, append-only within a session
+      <branch>.jsonl   ← one file per branch, one JSON object per line
 ```
 
-Each file is plain markdown — readable in any editor, diffable in git.
+Each file is JSONL — one JSON object per line with `timestamp`, `type`, `content`, and optional `next` fields. Displayed as markdown by the CLI.
 
 ## Usage
 
@@ -43,16 +43,21 @@ Each file is plain markdown — readable in any editor, diffable in git.
 # Write a checkpoint entry
 session_logger.py write --project my-project --branch feature-xyz --type checkpoint --content "..."
 
-# Write a finish entry
+# Write a finish entry with handover prompt
 session_logger.py write --project my-project --branch feature-xyz --type finish --content "..." --next "next task description"
 
-# Read the last entry for a branch
-session_logger.py last --project my-project --branch feature-xyz
+# Show the last 3 entries for a branch
+session_logger.py tail --project my-project --branch feature-xyz --limit 3
 
-# Query entries
-session_logger.py query --project my-project
-session_logger.py query --since 2026-04-07
-session_logger.py query --branch feature-xyz
+# List all projects (sorted by most recent activity)
+session_logger.py ls
+
+# List branches for a project
+session_logger.py ls --project my-project
+
+# Search entries by content
+session_logger.py search "auth middleware" --project my-project
+session_logger.py search --since 2026-04-07 --type finish
 ```
 
 ## Entry format
@@ -81,12 +86,12 @@ Skills call `session_logger.py` directly. The data repo is auto-committed and pu
 4. Copy the skill templates into your `~/.claude/skills/` (or symlink them)
 5. Add `SESSION.md` to `.gitignore` in your projects
 
-## Why not JSONL?
+## Storage format
 
-Plain markdown was chosen over JSONL because:
+Entries are stored as JSONL — one JSON object per line:
 
-- Readable without tooling — open the file in any editor during a session
-- Diffable — git history is human-readable
-- Compatible with the existing `SESSION.md` convention — same format, different location
+```json
+{"timestamp": "2026-04-11T10:30:00", "type": "checkpoint", "content": "...", "next": "..."}
+```
 
-Structured metadata (project, branch, type, timestamp) lives in the section heading, not in a separate schema.
+JSONL was chosen over plain markdown because it's trivially parseable for querying and search, while the CLI renders entries as readable markdown for display. The data files are still diffable in git and easy to inspect with standard tools (`jq`, `grep`).

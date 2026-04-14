@@ -389,7 +389,12 @@ class TestLs:
         )
         assert result.returncode == 0
         lines = result.stdout.strip().splitlines()
-        assert lines == ["alpha", "beta", "gamma"]
+        # All projects listed with last-activity metadata
+        assert len(lines) == 3
+        names = [line.split()[0] for line in lines]
+        assert sorted(names) == ["alpha", "beta", "gamma"]
+        for line in lines:
+            assert "(last:" in line
 
     def test_lists_branches_for_project(self, data_dir):
         for branch in ("main", "feature-auth", "feature-ui"):

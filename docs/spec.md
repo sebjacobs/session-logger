@@ -27,12 +27,12 @@ Claude Code sessions currently write `SESSION.md` into the project repo. This re
 ### Two repos
 
 **`session-logger`** (public, this repo)
-- `session_logger.py` — CLI tool: `write`, `last`, `query`
+- `session_logger.py` — CLI tool: `write`, `tail`, `ls`, `search`
 - `skills/` — reference Claude Code skill templates
 - `docs/` — spec, design notes
 
 **`<your-private-data-repo>`** (private, user-owned)
-- `logs/<project>/<branch>.md` — one file per branch, append-only
+- `logs/<project>/<branch>.jsonl` — one file per branch, append-only
 
 ### Configuration
 
@@ -46,31 +46,28 @@ Resolved in order: env var → `~/.config/session-logger/config` → error.
 
 ```
 session_logger.py write   --project STR --branch STR --type TYPE --content STR [--next STR]
-session_logger.py last    --project STR --branch STR
-session_logger.py query   [--project STR] [--branch STR] [--since DATE] [--type TYPE]
+session_logger.py tail    --project STR --branch STR [--limit N]
+session_logger.py ls      [--project STR]
+session_logger.py search  [TERM] [--project STR] [--branch STR] [--since DATE] [--type TYPE]
 ```
 
 Types: `start`, `checkpoint`, `break`, `finish`
 
 ### Entry format
 
-Appended as a markdown section to `logs/<project>/<branch>.md`:
+Stored as JSONL in `logs/<project>/<branch>.jsonl`, one JSON object per line:
 
-```
-## YYYY-MM-DD HH:MM | <type>
-
-<content>
-
-**Next:** <next>     ← only present if --next was passed
+```json
+{"timestamp": "2026-04-11T10:30:00", "type": "checkpoint", "content": "...", "next": "..."}
 ```
 
-`last` returns the final section from the file.
-`query` filters files and returns matching sections with file provenance.
+`tail` returns the last N entries, rendered as markdown.
+`search` filters entries by content, type, and date across projects and branches.
 
 ### Git integration
 
 After every `write`, the skill:
-1. `cd $SESSION_LOGS_DATA && git add logs/<project>/<branch>.md`
+1. `cd $SESSION_LOGS_DATA && git add logs/<project>/<branch>.jsonl`
 2. `git commit -m "session: <project>/<branch> <type> <timestamp>"`
 3. `git push` (at `finish` only — checkpoints commit locally, push at finish)
 
@@ -78,16 +75,16 @@ After every `write`, the skill:
 
 | Skill | Change |
 |---|---|
-| `start-session` | Run `session_logger.py last` to restore context; create file if missing |
+| `start-session` | Run `session_logger.py tail` to restore context; create file if missing |
 | `save-session` | Run `session_logger.py write --type checkpoint`; git commit in data repo |
 | `finish-session` | Run `session_logger.py write --type finish`; git commit + push in data repo; remove SESSION.md cleanup block |
 | `break-session` | Run `session_logger.py write --type break`; git commit in data repo |
 
 ## Acceptance criteria
 
-- `write` appends a correctly-formatted section to the right file, creating dirs as needed
-- `last` returns the final section only
-- `query --since` returns entries from all matching files after the given date
+- `write` appends a correctly-formatted JSONL entry to the right file, creating dirs as needed
+- `tail` returns the last N entries, rendered as markdown
+- `search --since` returns matching entries from all files after the given date
 - Missing `SESSION_LOGS_DATA` raises a clear error
 - All operations are idempotent on the data repo (no duplicate entries from retries)
 - Skills updated in dotfiles; SESSION.md removed from project `.gitignore` and git tracking
