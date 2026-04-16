@@ -1,5 +1,7 @@
 # session-logger
 
+> **Archived — superseded by [jotter](https://github.com/sebjacobs/jotter).**
+
 Append-only session log tooling for Claude Code sessions. Keeps session notes out of project repos — no cleanup commits, no merge-time ceremony.
 
 ## The problem
